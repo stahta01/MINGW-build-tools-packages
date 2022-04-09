@@ -1,0 +1,82 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+_realname=doxygen
+pkgbase=mingw-w64-${_realname}1.8
+pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
+pkgver=1.8.20
+pkgrel=1
+pkgdesc="A documentation system for C++, C, Java, IDL and PHP (mingw-w64)"
+arch=('any')
+url="http://www.doxygen.org/"
+options=('strip' 'staticlibs')
+license=('GPL')
+provides("${MINGW_PACKAGE_PREFIX}-${_realname}1.8")
+depends=(#"${MINGW_PACKAGE_PREFIX}-clang" # we dont want this huge dependency
+         "${MINGW_PACKAGE_PREFIX}-gcc-libs"
+         "${MINGW_PACKAGE_PREFIX}-libiconv"
+         "${MINGW_PACKAGE_PREFIX}-sqlite3"
+         "${MINGW_PACKAGE_PREFIX}-xapian-core")
+makedepends=(#"${MINGW_PACKAGE_PREFIX}-clang-tools-extra"
+             "${MINGW_PACKAGE_PREFIX}-cmake"
+             "${MINGW_PACKAGE_PREFIX}-gcc"
+             "${MINGW_PACKAGE_PREFIX}-pkg-config"
+             #"${MINGW_PACKAGE_PREFIX}-polly"
+             "${MINGW_PACKAGE_PREFIX}-python"
+             #"${MINGW_PACKAGE_PREFIX}-qt5"
+             'flex'
+             'bison')
+optdepends=("${MINGW_PACKAGE_PREFIX}-qt5")
+source=("${_realname}-${pkgver}.tar.gz"::"https://github.com/doxygen/doxygen/archive/Release_${pkgver//./_}.tar.gz"
+        cmake-mingw.patch)
+sha256sums=('3dbdf8814d6e68233d5149239cb1f0b40b4e7b32eef2fd53de8828fedd7aca15'
+            '3fa830b53238a38230db8e1743c667d7ea59821db25d2c9e60dccbd04123cd56')
+
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/$_patch"
+  done
+}
+
+
+prepare() {
+  cd "${srcdir}/${_realname}-Release_${pkgver//./_}"
+
+  apply_patch_with_msg \
+    cmake-mingw.patch
+}
+
+build() {
+  export QTDIR=${MINGW_PREFIX}
+
+  [[ -d build-${MINGW_CHOST} ]] && rm -rf build-${MINGW_CHOST}
+  mkdir build-${MINGW_CHOST} && cd build-${MINGW_CHOST}
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+  ${MINGW_PREFIX}/bin/cmake \
+    -G"MSYS Makefiles" \
+    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -Dbuild_wizard=ON \
+    -Dbuild_search=ON \
+    -Duse_sqlite3=ON \
+    -Duse_libclang=OFF \
+    -Dbuild_parse=ON \
+    ../${_realname}-Release_${pkgver//./_}
+
+  # fix some generated makefiles: replace LLVM-NOTFOUND by the path to LLVM.dll
+  # llvm_path_mixed=$(cygpath -m `which libLLVM.dll`)
+  # llvm_path_unix=$(echo ${llvm_path_mixed} | sed 's|C:|/C|')
+  # sed -e "s|\(bin/.*\.exe: \)LLVM-NOTFOUND|\1${llvm_path_mixed}|" \
+      # -e "s|\(.*libclangBasic.a \)LLVM-NOTFOUND|\1${llvm_path_unix}|" \
+      # -i ./addon/doxyparse/CMakeFiles/doxyparse.dir/build.make \
+         # ./src/CMakeFiles/doxygen.dir/build.make
+
+  make
+}
+
+package() {
+  cd ${srcdir}/build-${MINGW_CHOST}
+  make DESTDIR="${pkgdir}" install
+}
